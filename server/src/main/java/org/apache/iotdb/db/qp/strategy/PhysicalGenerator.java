@@ -283,6 +283,11 @@ public class PhysicalGenerator {
     return SchemaUtils.getSeriesTypesByPath(paths);
   }
 
+  public PhysicalGenerator() {
+    //do nothing.
+    //this function is only used for test
+  }
+
   private PhysicalPlan transformQuery(QueryOperator queryOperator) throws QueryProcessException {
     QueryPlan queryPlan;
 
@@ -573,7 +578,8 @@ public class PhysicalGenerator {
     basicOperator.setSinglePath(concatPath);
   }
 
-  private void deduplicate(QueryPlan queryPlan) throws MetadataException {
+
+  void deduplicate(QueryPlan queryPlan) throws MetadataException {
     // generate dataType first
     List<Path> paths = queryPlan.getPaths();
     List<TSDataType> dataTypes = getSeriesTypes(paths);
