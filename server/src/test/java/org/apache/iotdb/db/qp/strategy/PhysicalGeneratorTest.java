@@ -18,23 +18,24 @@
  */
 package org.apache.iotdb.db.qp.strategy;
 
-import java.io.File;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import java.io.IOException;
-import java.nio.file.Files;
-import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.iotdb.db.conf.IoTDBDescriptor;
 import org.apache.iotdb.db.exception.metadata.MetadataException;
+import org.apache.iotdb.db.exception.query.QueryProcessException;
 import org.apache.iotdb.db.metadata.MManager;
 import org.apache.iotdb.db.qp.logical.Operator.OperatorType;
+import org.apache.iotdb.db.qp.logical.crud.QueryOperator;
 import org.apache.iotdb.db.qp.physical.crud.AggregationPlan;
+import org.apache.iotdb.db.qp.physical.crud.AlignByDevicePlan;
+import org.apache.iotdb.db.qp.physical.crud.AlignByDevicePlan.MeasurementType;
 import org.apache.iotdb.db.qp.physical.crud.LastQueryPlan;
 import org.apache.iotdb.db.qp.physical.crud.RawDataQueryPlan;
 import org.apache.iotdb.tsfile.file.metadata.enums.CompressionType;
@@ -45,6 +46,8 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 public class PhysicalGeneratorTest {
   PhysicalGenerator generator;
@@ -183,4 +186,31 @@ public class PhysicalGeneratorTest {
     Assert.assertEquals(deduplicatedPaths.length, plan.getDeduplicatedDataTypes().size());
   }
 
+//  @Mock
+  QueryOperator operator;
+
+  @Test
+  public void testAlignByDevicePlanDeduplicate() throws QueryProcessException {
+   // MockitoAnnotations.initMocks(this);
+    operator = mock(QueryOperator.class);
+    when(operator.getFromOperator().getPrefixPaths()).thenReturn(Arrays.asList(new Path("root.sg.d1"), new Path("root.sg.d2")));
+    when(operator.getSelectOperator().getSuffixPaths()).thenReturn(Arrays.asList(new Path("s1"), new Path("s2"), new Path("s1"), new Path("1")));
+    when(operator.getSelectOperator().getAggregations()).thenReturn(Collections.emptyList());
+    RawDataQueryPlan plan = new RawDataQueryPlan();
+    AlignByDevicePlan alignByDevicePlan = generator.deduplicate(operator, plan);
+
+    Assert.assertArrayEquals( new String[]{"s1","s2","s1","1"}, alignByDevicePlan.getMeasurements().toArray(new String[0]));
+    Assert.assertArrayEquals( new String[]{"root.sg.d1","root.sg.d2"}, alignByDevicePlan.getDevices().toArray(new String[0]));
+    Map<String, TSDataType> measurementDataTypeMap = new HashMap<>();
+    measurementDataTypeMap.put("s1", TSDataType.INT32);
+    measurementDataTypeMap.put("s2", TSDataType.INT32);
+    Map<String, MeasurementType> measurementTypeMap = new HashMap<>();
+    measurementTypeMap.put("s1", MeasurementType.Exist);
+    measurementTypeMap.put("s2", MeasurementType.Exist);
+    measurementTypeMap.put("1", MeasurementType.NonExist);
+
+    Assert.assertEquals(measurementDataTypeMap, alignByDevicePlan.getMeasurementDataTypeMap());
+    Assert.assertEquals(measurementTypeMap, alignByDevicePlan.getMeasurementTypeMap());
+
+  }
 }
