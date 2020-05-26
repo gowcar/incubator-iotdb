@@ -18,7 +18,6 @@
  */
 package org.apache.iotdb.db.qp.strategy;
 
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
@@ -31,8 +30,12 @@ import java.util.Set;
 import org.apache.iotdb.db.exception.metadata.MetadataException;
 import org.apache.iotdb.db.exception.query.QueryProcessException;
 import org.apache.iotdb.db.metadata.MManager;
+import org.apache.iotdb.db.qp.constant.SQLConstant;
 import org.apache.iotdb.db.qp.logical.Operator.OperatorType;
+import org.apache.iotdb.db.qp.logical.crud.FilterOperator;
+import org.apache.iotdb.db.qp.logical.crud.FromOperator;
 import org.apache.iotdb.db.qp.logical.crud.QueryOperator;
+import org.apache.iotdb.db.qp.logical.crud.SelectOperator;
 import org.apache.iotdb.db.qp.physical.crud.AggregationPlan;
 import org.apache.iotdb.db.qp.physical.crud.AlignByDevicePlan;
 import org.apache.iotdb.db.qp.physical.crud.AlignByDevicePlan.MeasurementType;
@@ -61,6 +64,7 @@ public class PhysicalGeneratorTest {
   Map<String, Integer> pathToIndex = new HashMap<>();
   @Before
   public void setUp() throws Exception {
+    MockitoAnnotations.initMocks(this);
     generator = new PhysicalGenerator();
     pathStrings = new String[] {
         "root.sg.d2.s2",
@@ -186,16 +190,24 @@ public class PhysicalGeneratorTest {
     Assert.assertEquals(deduplicatedPaths.length, plan.getDeduplicatedDataTypes().size());
   }
 
-//  @Mock
+  @Mock
   QueryOperator operator;
-
+  @Mock
+  FromOperator fromOperator;
   @Test
   public void testAlignByDevicePlanDeduplicate() throws QueryProcessException {
-   // MockitoAnnotations.initMocks(this);
-    operator = mock(QueryOperator.class);
+
+
+    SelectOperator selectOperator = new SelectOperator(SQLConstant.TOK_SELECT);
+    selectOperator.setSuffixPathList(Arrays.asList(new Path("s1"), new Path("s2"), new Path("s1"), new Path("1")));
+
+    //operator = mock(QueryOperator.class);
+    when(operator.getFromOperator()).thenReturn(fromOperator);
+    when(operator.getSelectOperator()).thenReturn(selectOperator);
+    when(operator.getFilterOperator()).thenReturn(null);
+    when(operator.hasSlimit()).thenReturn(false);
     when(operator.getFromOperator().getPrefixPaths()).thenReturn(Arrays.asList(new Path("root.sg.d1"), new Path("root.sg.d2")));
-    when(operator.getSelectOperator().getSuffixPaths()).thenReturn(Arrays.asList(new Path("s1"), new Path("s2"), new Path("s1"), new Path("1")));
-    when(operator.getSelectOperator().getAggregations()).thenReturn(Collections.emptyList());
+
     RawDataQueryPlan plan = new RawDataQueryPlan();
     AlignByDevicePlan alignByDevicePlan = generator.deduplicate(operator, plan);
 
