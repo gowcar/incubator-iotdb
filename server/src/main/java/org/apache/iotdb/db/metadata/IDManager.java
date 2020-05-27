@@ -24,7 +24,7 @@ import org.apache.iotdb.db.exception.metadata.MetadataException;
 /**
  * ID generator for storage groups, devices, and measurements
  */
-public class IDGenerator {
+public class IDManager {
 
   private static int storageGroupIDLength = 16; //16 bits, must be not greater than 32
   private static int deviceIDLength = 32; //32 bits, must be not greater than 32

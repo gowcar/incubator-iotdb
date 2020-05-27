@@ -31,6 +31,29 @@ import org.apache.iotdb.tsfile.fileSystem.FSFactoryProducer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * MLogWriter is for serializing Schema on disk.
+ * The format:
+ * Storage Group:
+ * - Create:
+ * MetadataOperationType(2), fullPath
+ * - Delete:
+ * MetadataOperationType(1), fullPath
+ *
+ * Series:
+ * - Create:
+ * MetadataOperationType(0), fullPath, DataType, Encoding Type, Compression Type,
+ * PropKey=PropValue&PropKey=PropValue&...., Alias, Offset
+ * - Delete:
+ * MetadataOperationType(1), fullPath,
+ * - SET TTL:
+ * MetadataOperationType(10), fullPath, long TTL
+ * - ChangeOffset:
+ * MetadataOperationType(12), fullPath, new offset
+ *
+ * Here, the offset means the offset of this time series in the tagFile.
+ *
+ */
 public class MLogWriter {
 
   private static final Logger logger = LoggerFactory.getLogger(MLogWriter.class);

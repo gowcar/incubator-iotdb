@@ -22,15 +22,15 @@ import org.apache.iotdb.db.exception.metadata.MetadataException;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class IDGeneratorTest {
+public class IDManagerTest {
 
   @Test
   public void testNewGenerator() throws MetadataException {
-    Assert.assertEquals(1, IDGenerator.newSGNumber());
-    Assert.assertEquals(1, IDGenerator.newDeviceNumber());
-    Assert.assertEquals(1, IDGenerator.newMeasurementNumber());
+    Assert.assertEquals(1, IDManager.newSGNumber());
+    Assert.assertEquals(1, IDManager.newDeviceNumber());
+    Assert.assertEquals(1, IDManager.newMeasurementNumber());
     //0000 0000 0000 0010 0000 0000 0000 0000 0000 0000 0000 0010 0000 0000 0000 0010
-    Assert.assertEquals(0x0002000000020002L, IDGenerator.newID());
+    Assert.assertEquals(0x0002000000020002L, IDManager.newID());
   }
 
 }
