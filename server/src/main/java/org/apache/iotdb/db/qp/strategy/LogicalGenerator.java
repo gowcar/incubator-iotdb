@@ -29,6 +29,7 @@ import org.apache.iotdb.db.qp.logical.crud.*;
 import org.apache.iotdb.db.qp.logical.sys.*;
 import org.apache.iotdb.db.qp.logical.sys.AlterTimeSeriesOperator.AlterType;
 import org.apache.iotdb.db.qp.logical.sys.AuthorOperator.AuthorType;
+import org.apache.iotdb.db.qp.logical.sys.LoadConfigurationOperator.LoadConfigurationOperatorType;
 import org.apache.iotdb.db.qp.strategy.SqlBaseParser.*;
 import org.apache.iotdb.db.query.executor.fill.IFill;
 import org.apache.iotdb.db.query.executor.fill.LinearFill;
@@ -76,7 +77,7 @@ public class LogicalGenerator extends SqlBaseBaseListener {
       initializedOperator = new CountOperator(SQLConstant.TOK_COUNT_NODE_TIMESERIES,
           parsePrefixPath(ctx.prefixPath()), Integer.parseInt(ctx.INT().getText()));
     } else {
-      if(ctx.prefixPath() != null) {
+      if (ctx.prefixPath() != null) {
         initializedOperator = new CountOperator(SQLConstant.TOK_COUNT_TIMESERIES,
             parsePrefixPath(ctx.prefixPath()));
       } else {
@@ -90,12 +91,12 @@ public class LogicalGenerator extends SqlBaseBaseListener {
   public void enterFlush(FlushContext ctx) {
     super.enterFlush(ctx);
     FlushOperator flushOperator = new FlushOperator(SQLConstant.TOK_FLUSH);
-    if(ctx.booleanClause() != null) {
-        flushOperator.setSeq(Boolean.parseBoolean(ctx.booleanClause().getText()));
+    if (ctx.booleanClause() != null) {
+      flushOperator.setSeq(Boolean.parseBoolean(ctx.booleanClause().getText()));
     }
-    if(ctx.prefixPath(0) != null) {
+    if (ctx.prefixPath(0) != null) {
       List<Path> storageGroups = new ArrayList<>();
-      for(PrefixPathContext prefixPathContext : ctx.prefixPath()) {
+      for (PrefixPathContext prefixPathContext : ctx.prefixPath()) {
         storageGroups.add(parsePrefixPath(prefixPathContext));
       }
       flushOperator.setStorageGroupList(storageGroups);
@@ -198,7 +199,12 @@ public class LogicalGenerator extends SqlBaseBaseListener {
   @Override
   public void enterLoadConfigurationStatement(LoadConfigurationStatementContext ctx) {
     super.enterLoadConfigurationStatement(ctx);
-    initializedOperator = new LoadConfigurationOperator();
+    if (ctx.GLOBAL() != null) {
+      initializedOperator = new LoadConfigurationOperator(LoadConfigurationOperatorType.GLOBAL);
+    } else {
+      initializedOperator = new LoadConfigurationOperator(LoadConfigurationOperatorType.LOCAL);
+    }
+
   }
 
   @Override
@@ -269,7 +275,7 @@ public class LogicalGenerator extends SqlBaseBaseListener {
       // add tag
       alterTimeSeriesOperator.setAlterType(AlterType.ADD_TAGS);
       setMap(ctx, alterMap);
-    } else if (ctx.ATTRIBUTES() != null){
+    } else if (ctx.ATTRIBUTES() != null) {
       // add attribute
       alterTimeSeriesOperator.setAlterType(AlterType.ADD_ATTRIBUTES);
       setMap(ctx, alterMap);
@@ -286,7 +292,7 @@ public class LogicalGenerator extends SqlBaseBaseListener {
     if (ctx.property(0) != null) {
       for (PropertyContext property : tagsList) {
         String value;
-        if(property.propertyValue().STRING_LITERAL() != null) {
+        if (property.propertyValue().STRING_LITERAL() != null) {
           value = removeStringQuote(property.propertyValue().getText());
         } else {
           value = property.propertyValue().getText();
@@ -674,7 +680,6 @@ public class LogicalGenerator extends SqlBaseBaseListener {
     queryOp.setFill(true);
     queryOp.setLeftCRightO(ctx.timeInterval().LS_BRACKET() != null);
 
-
     // parse timeUnit
     queryOp.setUnit(parseDuration(ctx.DURATION().getText()));
     queryOp.setSlidingStep(queryOp.getUnit());
@@ -967,7 +972,7 @@ public class LogicalGenerator extends SqlBaseBaseListener {
     if (ctx.property(0) != null) {
       for (PropertyContext property : properties) {
         props.put(property.ID().getText().toLowerCase(),
-                property.propertyValue().getText().toLowerCase());
+            property.propertyValue().getText().toLowerCase());
       }
     }
     createTimeSeriesOperator.setCompressor(compressor);
@@ -1193,7 +1198,7 @@ public class LogicalGenerator extends SqlBaseBaseListener {
       operator.setKey(ctx.property().ID().getText());
     }
     String value;
-    if(propertyValueContext.STRING_LITERAL() != null) {
+    if (propertyValueContext.STRING_LITERAL() != null) {
       value = removeStringQuote(propertyValueContext.getText());
     } else {
       value = propertyValueContext.getText();

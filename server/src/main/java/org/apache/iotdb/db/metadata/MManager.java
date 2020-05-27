@@ -18,14 +18,40 @@
  */
 package org.apache.iotdb.db.metadata;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.iotdb.db.conf.IoTDBConfig;
+import org.apache.iotdb.db.conf.IoTDBConstant;
 import org.apache.iotdb.db.conf.IoTDBDescriptor;
 import org.apache.iotdb.db.conf.adapter.ActiveTimeSeriesCounter;
 import org.apache.iotdb.db.conf.adapter.IoTDBConfigDynamicAdapter;
 import org.apache.iotdb.db.engine.StorageEngine;
 import org.apache.iotdb.db.engine.fileSystem.SystemFileFactory;
 import org.apache.iotdb.db.exception.ConfigAdjusterException;
-import org.apache.iotdb.db.exception.metadata.*;
+import org.apache.iotdb.db.exception.metadata.DeleteFailedException;
+import org.apache.iotdb.db.exception.metadata.IllegalPathException;
+import org.apache.iotdb.db.exception.metadata.MetadataException;
+import org.apache.iotdb.db.exception.metadata.PathNotExistException;
+import org.apache.iotdb.db.exception.metadata.StorageGroupAlreadySetException;
+import org.apache.iotdb.db.exception.metadata.StorageGroupNotSetException;
 import org.apache.iotdb.db.metadata.mnode.InternalMNode;
 import org.apache.iotdb.db.metadata.mnode.LeafMNode;
 import org.apache.iotdb.db.metadata.mnode.MNode;
@@ -37,6 +63,7 @@ import org.apache.iotdb.db.qp.physical.sys.ShowTimeSeriesPlan;
 import org.apache.iotdb.db.query.dataset.ShowTimeSeriesResult;
 import org.apache.iotdb.db.utils.RandomDeleteCache;
 import org.apache.iotdb.db.utils.TestOnly;
+import org.apache.iotdb.tsfile.common.cache.LRUCache;
 import org.apache.iotdb.tsfile.exception.cache.CacheException;
 import org.apache.iotdb.tsfile.file.metadata.enums.CompressionType;
 import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
@@ -46,13 +73,6 @@ import org.apache.iotdb.tsfile.utils.Pair;
 import org.apache.iotdb.tsfile.write.schema.MeasurementSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.*;
-import java.util.Map.Entry;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * This class takes the responsibility of serialization of all the metadata info and persistent it
@@ -74,6 +94,8 @@ public class MManager {
   private boolean writeToLog;
   // device -> DeviceMNode
   private RandomDeleteCache<String, MNode> mNodeCache;
+  // currently, if a key is not existed in the mRemoteSchemaCache, an IOException will be thrown
+  private LRUCache<String, MeasurementSchema> mRemoteSchemaCache;
 
   // tag key -> tag value -> LeafMNode
   private Map<String, Map<String, Set<LeafMNode>>> tagIndex = new HashMap<>();
@@ -110,21 +132,33 @@ public class MManager {
     writeToLog = false;
 
     int cacheSize = config.getmManagerCacheSize();
-    mNodeCache =
-        new RandomDeleteCache<String, MNode>(cacheSize) {
+    mNodeCache = new RandomDeleteCache<String, MNode>(cacheSize) {
 
-          @Override
-          public MNode loadObjectByKey(String key) throws CacheException {
-            lock.readLock().lock();
-            try {
-              return mtree.getNodeByPathWithStorageGroupCheck(key);
-            } catch (MetadataException e) {
-              throw new CacheException(e);
-            } finally {
-              lock.readLock().unlock();
-            }
-          }
-        };
+      @Override
+      public MNode loadObjectByKey(String key) throws CacheException {
+        lock.readLock().lock();
+        try {
+          return mtree.getNodeByPathWithStorageGroupCheck(key);
+        } catch (MetadataException e) {
+          throw new CacheException(e);
+        } finally {
+          lock.readLock().unlock();
+        }
+      }
+    };
+
+    int remoteCacheSize = config.getmRemoteSchemaCacheSize();
+    mRemoteSchemaCache = new LRUCache<String, MeasurementSchema>(remoteCacheSize) {
+      @Override
+      protected MeasurementSchema loadObjectByKey(String key) throws IOException {
+        throw new IOException();
+      }
+
+      @Override
+      public synchronized void removeItem(String key) {
+        cache.keySet().removeIf(s -> s.startsWith(key));
+      }
+    };
   }
 
   public static MManager getInstance() {
@@ -362,6 +396,10 @@ public class MManager {
    */
   public Pair<Set<String>, String> deleteTimeseries(String prefixPath) throws MetadataException {
     lock.writeLock().lock();
+
+    // clear cached schema
+    mRemoteSchemaCache.removeItem(prefixPath);
+
     if (isStorageGroup(prefixPath)) {
 
       if (config.isEnableParameterAdapter()) {
@@ -503,6 +541,9 @@ public class MManager {
     lock.writeLock().lock();
     try {
       for (String storageGroup : storageGroups) {
+        // clear cached schema
+        mRemoteSchemaCache.removeItem(storageGroup);
+
         // try to delete storage group
         List<LeafMNode> leafMNodes = mtree.deleteStorageGroup(storageGroup);
         for (LeafMNode leafMNode : leafMNodes) {
@@ -561,6 +602,15 @@ public class MManager {
       if (path.equals(SQLConstant.RESERVED_TIME)) {
         return TSDataType.INT64;
       }
+
+      try {
+        MeasurementSchema schema = mRemoteSchemaCache.get(path);
+        return schema.getType();
+      } catch (IOException e) {
+        // if the mRemoteSchemaCache has no such a path, an IOException will be thrown.
+        // we ignore it to get the type from the local mtree.
+      }
+
       return mtree.getSchema(path).getType();
     } finally {
       lock.readLock().unlock();
@@ -626,7 +676,7 @@ public class MManager {
    *
    * @return storage group in the given path
    */
-  public String getStorageGroupName(String path) throws MetadataException {
+  public String getStorageGroupName(String path) throws StorageGroupNotSetException {
     lock.readLock().lock();
     try {
       return mtree.getStorageGroupName(path);
@@ -809,12 +859,36 @@ public class MManager {
     }
   }
 
-  public MeasurementSchema getSeriesSchema(String device, String measuremnet)
+  public MeasurementSchema getSeriesSchema(String device, String measurement)
       throws MetadataException {
     lock.readLock().lock();
     try {
       InternalMNode node = (InternalMNode) mtree.getNodeByPath(device);
-      return ((LeafMNode) node.getChild(measuremnet)).getSchema();
+      MNode leaf = node.getChild(measurement);
+      if (leaf != null) {
+        return ((LeafMNode) leaf).getSchema();
+      } else {
+        return mRemoteSchemaCache
+            .get(device + IoTDBConstant.PATH_SEPARATOR + measurement);
+      }
+    } catch (PathNotExistException e) {
+      try {
+        MeasurementSchema measurementSchema = mRemoteSchemaCache
+            .get(device + IoTDBConstant.PATH_SEPARATOR + measurement);
+        if (measurementSchema != null) {
+          return measurementSchema;
+        } else {
+          throw e;
+        }
+      } catch (IOException ex) {
+        throw e;
+      }
+    } catch (IllegalPathException e) {
+      //do nothing and throw it directly.
+      throw e;
+    } catch (IOException e) {
+      // cache miss
+      throw new PathNotExistException(device + IoTDBConstant.PATH_SEPARATOR + measurement);
     } finally {
       lock.readLock().unlock();
     }
@@ -878,6 +952,8 @@ public class MManager {
 
   /**
    * get device node, if the storage group is not set, create it when autoCreateSchema is true
+   *
+   * (we develop this method as we need to get the node's lock after we get the lock.writeLock())
    *
    * <p>!!!!!!Attention!!!!! must call the return node's readUnlock() if you call this method.
    *
@@ -971,7 +1047,27 @@ public class MManager {
   }
 
   /**
-   * change or set the new offset of a timeseries
+   * get all storageGroups ttl
+   *
+   * @return key-> storageGroupName, value->ttl
+   */
+  public Map<String, Long> getStorageGroupsTTL() {
+    Map<String, Long> storageGroupsTTL = new HashMap<>();
+    try {
+      List<String> storageGroups = this.getAllStorageGroupNames();
+      for (String storageGroup : storageGroups) {
+        long ttl = getStorageGroupNode(storageGroup).getDataTTL();
+        storageGroupsTTL.put(storageGroup, ttl);
+      }
+    } catch (MetadataException e) {
+      logger.error("get storage groups ttl failed.", e);
+    }
+    return storageGroupsTTL;
+  }
+
+  /**
+   * Check whether the given path contains a storage group change or set the new offset of a
+   * timeseries
    *
    * @param path   timeseries
    * @param offset offset in the tag file
@@ -1359,6 +1455,13 @@ public class MManager {
     }
   }
 
+  /**
+   * Collect the timeseries schemas under "startingPath". Notice the measurements in the collected
+   * MeasurementSchemas are the full path here.
+   *
+   * @param startingPath
+   * @param timeseriesSchemas
+   */
   public void collectSeries(String startingPath, List<MeasurementSchema> timeseriesSchemas) {
     MNode mNode;
     try {
@@ -1399,6 +1502,25 @@ public class MManager {
       return mtree.determineStorageGroup(path);
     } finally {
       lock.readLock().unlock();
+    }
+  }
+
+  /**
+   * if the path is in local mtree, nothing needed to do (because mtree is in the memory);
+   * Otherwise cache the path to mRemoteSchemaCache
+   * @param path
+   * @param schema
+   */
+  public void cacheSchema(String path, MeasurementSchema schema) {
+    // check schema is in local
+    try {
+      ShowTimeSeriesPlan tempPlan = new ShowTimeSeriesPlan(new Path(path), false, null, null, 0, 0);
+      List<String[]> schemas = mtree.getAllMeasurementSchema(tempPlan);
+      if (schemas.isEmpty()) {
+        mRemoteSchemaCache.put(path, schema);
+      }
+    } catch (MetadataException e) {
+      mRemoteSchemaCache.put(path, schema);
     }
   }
 }
