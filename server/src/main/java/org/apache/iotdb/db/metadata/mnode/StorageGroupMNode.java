@@ -28,6 +28,8 @@ public class StorageGroupMNode extends InternalMNode {
    */
   private long dataTTL;
 
+  private int id;
+
 
   public StorageGroupMNode(MNode parent, String name, String fullPath, long dataTTL) {
     super(parent, name);
@@ -41,6 +43,14 @@ public class StorageGroupMNode extends InternalMNode {
 
   public void setDataTTL(long dataTTL) {
     this.dataTTL = dataTTL;
+  }
+
+  public int getId() {
+    return id;
+  }
+
+  public void setId(int id) {
+    this.id = id;
   }
 
 }

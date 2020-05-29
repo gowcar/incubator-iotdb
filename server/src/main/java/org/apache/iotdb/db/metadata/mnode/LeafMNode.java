@@ -41,6 +41,8 @@ public class LeafMNode extends MNode {
 
   private TimeValuePair cachedLastValuePair = null;
 
+  private int id;
+
   /**
    * @param alias alias of measurementName
    */
@@ -139,5 +141,14 @@ public class LeafMNode extends MNode {
 
   public void setAlias(String alias) {
     this.alias = alias;
+  }
+
+
+  public int getId() {
+    return id;
+  }
+
+  public void setId(int id) {
+    this.id = id;
   }
 }

@@ -32,17 +32,17 @@ public class ActiveTimeSeriesCounter implements IActiveTimeSeriesCounter {
   /**
    * Map[StorageGroup, HyperLogLogCounter]
    */
-  private static Map<String, HyperLogLog> storageGroupHllMap = new ConcurrentHashMap<>();
+  private static Map<Integer, HyperLogLog> storageGroupHllMap = new ConcurrentHashMap<>();
 
   /**
    * Map[StorageGroup, ActiveTimeSeriesRatio]
    */
-  private static Map<String, Double> activeRatioMap = new ConcurrentHashMap<>();
+  private static Map<Integer, Double> activeRatioMap = new ConcurrentHashMap<>();
 
   /**
    * Map[StorageGroup, ActiveTimeSeriesNumber]
    */
-  private static Map<String, Long> activeTimeSeriesNumMap = new ConcurrentHashMap<>();
+  private static Map<Integer, Long> activeTimeSeriesNumMap = new ConcurrentHashMap<>();
 
   /**
    * LOG2M decide the precision of the HyperLogLog algorithm
@@ -52,14 +52,14 @@ public class ActiveTimeSeriesCounter implements IActiveTimeSeriesCounter {
   private ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
   @Override
-  public void init(String storageGroup) {
+  public void init(int storageGroup) {
     storageGroupHllMap.put(storageGroup, new HyperLogLog(LOG2M));
     activeRatioMap.put(storageGroup, 0D);
     activeTimeSeriesNumMap.put(storageGroup, 0L);
   }
 
   @Override
-  public void offer(String storageGroup, String device, String measurement) {
+  public void offer(int storageGroup, String device, String measurement) {
     String path = device + IoTDBConstant.PATH_SEPARATOR + measurement;
     try {
       HyperLogLog log = storageGroupHllMap.get(storageGroup);
@@ -78,7 +78,7 @@ public class ActiveTimeSeriesCounter implements IActiveTimeSeriesCounter {
   }
 
   @Override
-  public void updateActiveRatio(String storageGroup) {
+  public void updateActiveRatio(int storageGroup) {
     lock.writeLock().lock();
     try {
       HyperLogLog log = storageGroupHllMap.get(storageGroup);
@@ -98,7 +98,7 @@ public class ActiveTimeSeriesCounter implements IActiveTimeSeriesCounter {
         for (double number : activeTimeSeriesNumMap.values()) {
           totalActiveTsNum += number;
         }
-        for (Map.Entry<String, Long> entry : activeTimeSeriesNumMap.entrySet()) {
+        for (Map.Entry<Integer, Long> entry : activeTimeSeriesNumMap.entrySet()) {
           double activeRatio = 0;
           if (totalActiveTsNum > 0) {
             activeRatio = entry.getValue() / totalActiveTsNum;
@@ -119,7 +119,7 @@ public class ActiveTimeSeriesCounter implements IActiveTimeSeriesCounter {
   }
 
   @Override
-  public double getActiveRatio(String storageGroup) {
+  public double getActiveRatio(int storageGroup) {
     lock.writeLock().lock();
     double ratio;
     try {
@@ -134,7 +134,7 @@ public class ActiveTimeSeriesCounter implements IActiveTimeSeriesCounter {
   }
 
   @Override
-  public void delete(String storageGroup) {
+  public void delete(int storageGroup) {
     storageGroupHllMap.remove(storageGroup);
     activeRatioMap.remove(storageGroup);
     activeTimeSeriesNumMap.remove(storageGroup);

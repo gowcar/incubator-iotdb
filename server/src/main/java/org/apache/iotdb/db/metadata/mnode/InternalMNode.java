@@ -56,6 +56,7 @@ public class InternalMNode extends MNode {
 
   /**
    * If delete a leafMNode, lock its parent, if delete an InternalNode, lock itself
+   * @throws DeleteFailedException if the method can not get the lock (e.g., someone is writing data.)
    */
   @Override
   public void deleteChild(String name) throws DeleteFailedException {

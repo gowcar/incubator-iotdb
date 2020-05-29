@@ -65,11 +65,13 @@ public abstract class MNode implements Serializable {
 
   /**
    * delete a child
+   * @throws  DeleteFailedException if the child is used.
    */
   public abstract void deleteChild(String name) throws DeleteFailedException;
 
   /**
    * delete the alias of a child
+   * @throws  DeleteFailedException if the child is used.
    */
   public abstract void deleteAliasChild(String alias) throws DeleteFailedException;
 
@@ -116,6 +118,10 @@ public abstract class MNode implements Serializable {
 
   public MNode getParent() {
     return parent;
+  }
+
+  public void setParent(MNode node) {
+    this.parent = node;
   }
 
   public abstract Map<String, MNode> getChildren();

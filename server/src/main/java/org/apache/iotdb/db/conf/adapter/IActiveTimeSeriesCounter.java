@@ -25,7 +25,7 @@ public interface IActiveTimeSeriesCounter {
    *
    * @param storageGroup the given storage group to be initialized
    */
-  void init(String storageGroup);
+  void init(int storageGroup);
 
   /**
    * Register a time series to the active time series counter
@@ -34,14 +34,14 @@ public interface IActiveTimeSeriesCounter {
    * @param device the device name of the time series
    * @param measurement the sensor name of the time series
    */
-  void offer(String storageGroup, String device, String measurement);
+  void offer(int storageGroup, String device, String measurement);
 
   /**
    * Update the ActiveRatioMap
    *
    * @param storageGroup whose counter will be refreshed after the update
    */
-  void updateActiveRatio(String storageGroup);
+  void updateActiveRatio(int storageGroup);
 
   /**
    * Get the active time series number proportion of the given storage group
@@ -49,13 +49,13 @@ public interface IActiveTimeSeriesCounter {
    * @param storageGroup the storage group to be calculated
    * @return the active time series number proportion of the given storage group
    */
-  double getActiveRatio(String storageGroup);
+  double getActiveRatio(int storageGroup);
 
   /**
    * Delete the counter for the given storage group
    *
    * @param storageGroup whose counter will be removed
    */
-  void delete(String storageGroup);
+  void delete(int storageGroup);
 
 }

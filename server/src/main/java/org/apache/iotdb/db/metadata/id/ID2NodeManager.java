@@ -16,22 +16,27 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.iotdb.db.metadata;
 
-import org.apache.iotdb.db.exception.metadata.MetadataException;
-import org.apache.iotdb.db.metadata.id.IDManager;
-import org.junit.Assert;
-import org.junit.Test;
+package org.apache.iotdb.db.metadata.id;
 
-public class IDManagerTest {
+import java.util.ArrayList;
+import java.util.List;
+import org.apache.iotdb.db.metadata.mnode.MNode;
 
-  @Test
-  public void testNewGenerator() throws MetadataException {
-    Assert.assertEquals(1, IDManager.newSGNumber());
-    Assert.assertEquals(1, IDManager.newDeviceNumber());
-    Assert.assertEquals(1, IDManager.newMeasurementNumber());
-    //0000 0000 0000 0010 0000 0000 0000 0000 0000 0000 0000 0010 0000 0000 0000 0010
-    Assert.assertEquals(0x0002000000020002L, IDManager.newID());
+public class ID2NodeManager {
+  List<MNode> id2strings = new ArrayList<>();
+
+
+  /**
+   * when calling this method, you must guarantee that all ids that less than id has been put.
+   * @param id
+   * @param node
+   */
+  public void put(int id, MNode node) {
+    id2strings.set(id, node);
   }
 
+  public MNode get(int id) {
+    return id2strings.get(id);
+  }
 }

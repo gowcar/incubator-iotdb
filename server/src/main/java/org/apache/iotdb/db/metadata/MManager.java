@@ -52,16 +52,16 @@ import org.apache.iotdb.db.exception.metadata.MetadataException;
 import org.apache.iotdb.db.exception.metadata.PathNotExistException;
 import org.apache.iotdb.db.exception.metadata.StorageGroupAlreadySetException;
 import org.apache.iotdb.db.exception.metadata.StorageGroupNotSetException;
+import org.apache.iotdb.db.metadata.id.ID2NodeManager;
+import org.apache.iotdb.db.metadata.id.IDManager;
 import org.apache.iotdb.db.metadata.mnode.InternalMNode;
 import org.apache.iotdb.db.metadata.mnode.LeafMNode;
 import org.apache.iotdb.db.metadata.mnode.MNode;
 import org.apache.iotdb.db.metadata.mnode.StorageGroupMNode;
-import org.apache.iotdb.db.monitor.MonitorConstants;
 import org.apache.iotdb.db.qp.constant.SQLConstant;
 import org.apache.iotdb.db.qp.physical.sys.CreateTimeSeriesPlan;
 import org.apache.iotdb.db.qp.physical.sys.ShowTimeSeriesPlan;
 import org.apache.iotdb.db.query.dataset.ShowTimeSeriesResult;
-import org.apache.iotdb.db.utils.RandomDeleteCache;
 import org.apache.iotdb.db.utils.TestOnly;
 import org.apache.iotdb.tsfile.common.cache.LRUCache;
 import org.apache.iotdb.tsfile.exception.cache.CacheException;
@@ -84,6 +84,13 @@ public class MManager {
   private static final Logger logger = LoggerFactory.getLogger(MManager.class);
   private static final String TIME_SERIES_TREE_HEADER = "===  Timeseries Tree  ===\n\n";
 
+  private ID2NodeManager id2StorageGroups = new ID2NodeManager();
+  //only the string  without the storage group name.
+  private ID2NodeManager id2Devices = new ID2NodeManager();
+  //only the measurement name
+  private ID2NodeManager id2Measurement = new ID2NodeManager();
+
+
   // the lock for read/insert
   private ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
   // the log file seriesPath
@@ -92,8 +99,7 @@ public class MManager {
   private MLogWriter logWriter;
   private TagLogFile tagLogFile;
   private boolean writeToLog;
-  // device -> DeviceMNode
-  private RandomDeleteCache<String, MNode> mNodeCache;
+
   // currently, if a key is not existed in the mRemoteSchemaCache, an IOException will be thrown
   private LRUCache<String, MeasurementSchema> mRemoteSchemaCache;
 
@@ -101,10 +107,13 @@ public class MManager {
   private Map<String, Map<String, Set<LeafMNode>>> tagIndex = new HashMap<>();
 
   // storage group name -> the series number
-  private Map<String, Integer> seriesNumberInStorageGroups = new HashMap<>();
+  private Map<Integer, Integer> seriesNumberInStorageGroups = new HashMap<>();
   private long maxSeriesNumberAmongStorageGroup;
   private boolean initialized;
   private IoTDBConfig config;
+
+  //TODO init this one.
+  private StorageGroupMNode statStorageGroup;
 
   private static class MManagerHolder {
 
@@ -132,20 +141,7 @@ public class MManager {
     writeToLog = false;
 
     int cacheSize = config.getmManagerCacheSize();
-    mNodeCache = new RandomDeleteCache<String, MNode>(cacheSize) {
 
-      @Override
-      public MNode loadObjectByKey(String key) throws CacheException {
-        lock.readLock().lock();
-        try {
-          return mtree.getNodeByPathWithStorageGroupCheck(key);
-        } catch (MetadataException e) {
-          throw new CacheException(e);
-        } finally {
-          lock.readLock().unlock();
-        }
-      }
-    };
 
     int remoteCacheSize = config.getmRemoteSchemaCacheSize();
     mRemoteSchemaCache = new LRUCache<String, MeasurementSchema>(remoteCacheSize) {
@@ -159,6 +155,7 @@ public class MManager {
         cache.keySet().removeIf(s -> s.startsWith(key));
       }
     };
+
   }
 
   public static MManager getInstance() {
@@ -179,10 +176,10 @@ public class MManager {
       initFromLog(logFile);
 
       if (config.isEnableParameterAdapter()) {
-        List<String> storageGroups = mtree.getAllStorageGroupNames();
-        for (String sg : storageGroups) {
-          MNode node = mtree.getNodeByPath(sg);
-          seriesNumberInStorageGroups.put(sg, node.getLeafCount());
+        List<StorageGroupMNode> storageGroups = mtree.getAllStorageGroupNodes();
+        for (StorageGroupMNode sg : storageGroups) {
+          seriesNumberInStorageGroups.put(sg.getId(), sg.getLeafCount());
+          id2StorageGroups.put(sg.getId(), sg);
         }
         maxSeriesNumberAmongStorageGroup =
             seriesNumberInStorageGroups.values().stream().max(Integer::compareTo).orElse(0);
@@ -190,7 +187,7 @@ public class MManager {
 
       logWriter = new MLogWriter(config.getSchemaDir(), MetadataConstant.METADATA_LOG);
       writeToLog = true;
-    } catch (IOException | MetadataException e) {
+    } catch (IOException e) {
       mtree = new MTree();
       logger.error("Cannot read MTree from file, using an empty new one", e);
     }
@@ -222,7 +219,6 @@ public class MManager {
     lock.writeLock().lock();
     try {
       this.mtree = new MTree();
-      this.mNodeCache.clear();
       this.tagIndex.clear();
       this.seriesNumberInStorageGroups.clear();
       this.maxSeriesNumberAmongStorageGroup = 0;
@@ -276,9 +272,9 @@ public class MManager {
         createTimeseries(plan, offset);
         break;
       case MetadataOperationType.DELETE_TIMESERIES:
-        Pair<Set<String>, String> pair = deleteTimeseries(args[1]);
-        for (String deleteStorageGroup : pair.left) {
-          StorageEngine.getInstance().deleteAllDataFilesInOneStorageGroup(deleteStorageGroup);
+        Pair<Set<StorageGroupMNode>, String> pair = deleteTimeseries(args[1]);
+        for (StorageGroupMNode deleteStorageGroup : pair.left) {
+          StorageEngine.getInstance().deleteAllDataFilesInOneStorageGroup(deleteStorageGroup.getFullPath());
         }
         if (!pair.right.isEmpty()) {
           throw new DeleteFailedException(pair.right);
@@ -313,16 +309,16 @@ public class MManager {
       /*
        * get the storage group with auto create schema
        */
-      String storageGroupName;
+      StorageGroupMNode storageGroup;
       try {
-        storageGroupName = mtree.getStorageGroupName(path);
+        storageGroup = mtree.findStorageGroupNode(path);
       } catch (StorageGroupNotSetException e) {
         if (!config.isAutoCreateSchemaEnabled()) {
           throw e;
         }
-        storageGroupName =
+        String storageGroupName =
             MetaUtils.getStorageGroupNameByLevel(path, config.getDefaultStorageGroupLevel());
-        setStorageGroup(storageGroupName);
+        storageGroup = setStorageGroup(storageGroupName);
       }
 
       // check memory
@@ -344,8 +340,8 @@ public class MManager {
 
       // update statistics
       if (config.isEnableParameterAdapter()) {
-        int size = seriesNumberInStorageGroups.get(storageGroupName);
-        seriesNumberInStorageGroups.put(storageGroupName, size + 1);
+        int size = seriesNumberInStorageGroups.get(storageGroup.getId());
+        seriesNumberInStorageGroups.put(storageGroup.getId(), size + 1);
         if (size + 1 > maxSeriesNumberAmongStorageGroup) {
           maxSeriesNumberAmongStorageGroup = size + 1;
         }
@@ -394,37 +390,28 @@ public class MManager {
    * files of such StorageGroups should be deleted to reclaim disk space. 2. The String is the
    * deletion failed Timeseries
    */
-  public Pair<Set<String>, String> deleteTimeseries(String prefixPath) throws MetadataException {
+  public Pair<Set<StorageGroupMNode>, String> deleteTimeseries(String prefixPath) throws MetadataException {
     lock.writeLock().lock();
 
     // clear cached schema
     mRemoteSchemaCache.removeItem(prefixPath);
 
-    if (isStorageGroup(prefixPath)) {
+    MNode node = mtree.getNodeByPath(prefixPath);
 
-      if (config.isEnableParameterAdapter()) {
-        int size = seriesNumberInStorageGroups.get(prefixPath);
-        seriesNumberInStorageGroups.put(prefixPath, 0);
-        if (size == maxSeriesNumberAmongStorageGroup) {
-          seriesNumberInStorageGroups.values().stream()
-              .max(Integer::compareTo)
-              .ifPresent(val -> maxSeriesNumberAmongStorageGroup = val);
-        }
+    try {
+      Set<StorageGroupMNode> emptyStorageGroups = new HashSet<>();
+
+      List<LeafMNode> allTimeseries = mtree.getAllLeafNodes(node);
+      // Monitor storage group seriesPath is not allowed to be deleted
+      if (statStorageGroup != null) {
+        int statSGId = statStorageGroup.getId();
+        allTimeseries.removeIf(p -> IDManager.getStorageGroupID(p.getId()) == statSGId);
       }
 
-      mNodeCache.clear();
-    }
-    try {
-      Set<String> emptyStorageGroups = new HashSet<>();
-
-      List<String> allTimeseries = mtree.getAllTimeseriesName(prefixPath);
-      // Monitor storage group seriesPath is not allowed to be deleted
-      allTimeseries.removeIf(p -> p.startsWith(MonitorConstants.STAT_STORAGE_GROUP_PREFIX));
-
       Set<String> failedNames = new HashSet<>();
-      for (String p : allTimeseries) {
+      for (LeafMNode p : allTimeseries) {
         try {
-          String emptyStorageGroup = deleteOneTimeseriesAndUpdateStatisticsAndLog(p);
+          StorageGroupMNode emptyStorageGroup = deleteOneTimeseriesAndUpdateStatisticsAndLog(p);
           if (emptyStorageGroup != null) {
             emptyStorageGroups.add(emptyStorageGroup);
           }
@@ -466,66 +453,76 @@ public class MManager {
   }
 
   /**
-   * @param path full path from root to leaf node
-   * @return after delete if the storage group is empty, return its name, otherwise return null
+   * @param timeSeries full path from root to leaf node
+   * @return after delete if the storage group is empty, return the node, otherwise return null
    */
-  private String deleteOneTimeseriesAndUpdateStatisticsAndLog(String path)
+  private StorageGroupMNode deleteOneTimeseriesAndUpdateStatisticsAndLog(LeafMNode timeSeries)
       throws MetadataException, IOException {
     lock.writeLock().lock();
     try {
-      Pair<String, LeafMNode> pair = mtree.deleteTimeseriesAndReturnEmptyStorageGroup(path);
-      removeFromTagInvertedIndex(pair.right);
-      String storageGroupName = pair.left;
+      StorageGroupMNode emptySG = mtree.deleteTimeseriesAndReturnEmptyStorageGroup(timeSeries);
+      removeFromTagInvertedIndex(timeSeries);
 
-      // TODO: delete the path node and all its ancestors
-      mNodeCache.clear();
+      decreaseSeriesNumberStaticstics(IDManager.getStorageGroupID(timeSeries.getId()), 1);
+
+      if (writeToLog) {
+        logWriter.deleteTimeseries(timeSeries.getFullPath());
+      }
+
       try {
         IoTDBConfigDynamicAdapter.getInstance().addOrDeleteTimeSeries(-1);
       } catch (ConfigAdjusterException e) {
         throw new MetadataException(e);
       }
 
-      if (config.isEnableParameterAdapter()) {
-        String storageGroup = getStorageGroupName(path);
-        int size = seriesNumberInStorageGroups.get(storageGroup);
-        seriesNumberInStorageGroups.put(storageGroup, size - 1);
-        if (size == maxSeriesNumberAmongStorageGroup) {
-          seriesNumberInStorageGroups.values().stream().max(Integer::compareTo)
-              .ifPresent(val -> maxSeriesNumberAmongStorageGroup = val);
-        }
-      }
 
-      if (writeToLog) {
-        logWriter.deleteTimeseries(path);
-      }
-      return storageGroupName;
+      return emptySG;
     } finally {
       lock.writeLock().unlock();
     }
   }
+
+  private void decreaseSeriesNumberStaticstics(int sgId, int delta) {
+    if (config.isEnableParameterAdapter()) {
+      int size = seriesNumberInStorageGroups.get(sgId);
+      seriesNumberInStorageGroups.put(sgId, size - delta);
+      if (size == maxSeriesNumberAmongStorageGroup) {
+        seriesNumberInStorageGroups.values().stream().max(Integer::compareTo)
+            .ifPresent(val -> maxSeriesNumberAmongStorageGroup = val);
+      }
+    }
+  }
+
+  private void resetSeriesNumberStaticsticsForASG(int sgId) {
+    decreaseSeriesNumberStaticstics(sgId, seriesNumberInStorageGroups.get(sgId));
+  }
+
+
 
   /**
    * Set storage group of the given path to MTree. Check
    *
    * @param storageGroup root.node.(node)*
    */
-  public void setStorageGroup(String storageGroup) throws MetadataException {
+  public StorageGroupMNode setStorageGroup(String storageGroup) throws MetadataException {
     lock.writeLock().lock();
+    StorageGroupMNode node = null;
     try {
-      mtree.setStorageGroup(storageGroup);
+      node = mtree.setStorageGroup(storageGroup);
       IoTDBConfigDynamicAdapter.getInstance().addOrDeleteStorageGroup(1);
 
       if (config.isEnableParameterAdapter()) {
-        ActiveTimeSeriesCounter.getInstance().init(storageGroup);
-        seriesNumberInStorageGroups.put(storageGroup, 0);
+        ActiveTimeSeriesCounter.getInstance().init(node.getId());
+        seriesNumberInStorageGroups.put(node.getId(), 0);
       }
       if (writeToLog) {
-        logWriter.setStorageGroup(storageGroup);
+        logWriter.setStorageGroup(storageGroup, node.getId());
       }
+      return node;
     } catch (IOException e) {
       throw new MetadataException(e.getMessage());
     } catch (ConfigAdjusterException e) {
-      mtree.deleteStorageGroup(storageGroup);
+      mtree.deleteStorageGroup(node);
       throw new MetadataException(e);
     } finally {
       lock.writeLock().unlock();
@@ -545,17 +542,16 @@ public class MManager {
         mRemoteSchemaCache.removeItem(storageGroup);
 
         // try to delete storage group
-        List<LeafMNode> leafMNodes = mtree.deleteStorageGroup(storageGroup);
+        StorageGroupMNode sgNode = mtree.getStorageGroupNode(storageGroup);
+        List<LeafMNode> leafMNodes = mtree.deleteStorageGroup(sgNode);
         for (LeafMNode leafMNode : leafMNodes) {
           removeFromTagInvertedIndex(leafMNode);
         }
-        mNodeCache.clear();
-
         if (config.isEnableParameterAdapter()) {
           IoTDBConfigDynamicAdapter.getInstance().addOrDeleteStorageGroup(-1);
-          int size = seriesNumberInStorageGroups.get(storageGroup);
+          int size = seriesNumberInStorageGroups.get(sgNode.getId());
           IoTDBConfigDynamicAdapter.getInstance().addOrDeleteTimeSeries(size * -1);
-          ActiveTimeSeriesCounter.getInstance().delete(storageGroup);
+          ActiveTimeSeriesCounter.getInstance().delete(sgNode.getId());
           seriesNumberInStorageGroups.remove(storageGroup);
           if (size == maxSeriesNumberAmongStorageGroup) {
             maxSeriesNumberAmongStorageGroup =
@@ -941,10 +937,10 @@ public class MManager {
    * Get storage group node by path. If storage group is not set, StorageGroupNotSetException will
    * be thrown
    */
-  public StorageGroupMNode getStorageGroupNode(String path) throws MetadataException {
+  public StorageGroupMNode getStorageGroupNode(String storageGroupPath) throws MetadataException {
     lock.readLock().lock();
     try {
-      return mtree.getStorageGroupNode(path);
+      return mtree.getStorageGroupNode(storageGroupPath);
     } finally {
       lock.readLock().unlock();
     }

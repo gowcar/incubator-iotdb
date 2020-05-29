@@ -119,8 +119,8 @@ public class MLogWriter {
     writer.flush();
   }
 
-  public void setStorageGroup(String storageGroup) throws IOException {
-    writer.write(MetadataOperationType.SET_STORAGE_GROUP + "," + storageGroup);
+  public void setStorageGroup(String storageGroup, int id) throws IOException {
+    writer.write(String.format("%d,%s,%d", MetadataOperationType.SET_STORAGE_GROUP, storageGroup, id));
     writer.newLine();
     writer.flush();
   }

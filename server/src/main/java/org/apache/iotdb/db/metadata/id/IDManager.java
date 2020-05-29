@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.iotdb.db.metadata;
+package org.apache.iotdb.db.metadata.id;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.iotdb.db.exception.metadata.MetadataException;
@@ -26,9 +26,9 @@ import org.apache.iotdb.db.exception.metadata.MetadataException;
  */
 public class IDManager {
 
-  private static int storageGroupIDLength = 16; //16 bits, must be not greater than 32
-  private static int deviceIDLength = 32; //32 bits, must be not greater than 32
-  private static int measurementLength = 16; //16 bits, must be not greater than 32
+  private static int storageGroupIDLength = 12; //must be not greater than 32
+  private static int deviceIDLength = 32; //must be not greater than 32
+  private static int measurementLength = 20; //must be not greater than 32
 
   private static int maxSGID;
   private static int maxDeivceID;
@@ -57,6 +57,7 @@ public class IDManager {
   private static AtomicInteger deviceGenerator = new AtomicInteger(0);
   private static AtomicInteger measurementGenerator = new AtomicInteger(0);
 
+
   public static int newSGNumber() throws MetadataException {
     if (sgGenerator.get() == maxSGID) {
       throw new MetadataException("too many storage groups: {}", sgGenerator.get());
@@ -82,16 +83,16 @@ public class IDManager {
     return (0L | ((long) newSGNumber()) << (deviceIDLength + measurementLength) | ((long) newDeviceNumber()) << measurementLength | newMeasurementNumber());
   }
 
-  public int getStorageGroupID(long id) {
-    return (int)(id >>> (deviceIDLength + measurementLength));
+  public static int getStorageGroupID(long fullId) {
+    return (int)(fullId >>> (deviceIDLength + measurementLength));
   }
 
-  public int getDeviceID(long id) {
-    return (int)((id << storageGroupIDLength) >>> (storageGroupIDLength + measurementLength));
+  public static int getDeviceID(long fullId) {
+    return (int)((fullId << storageGroupIDLength) >>> (storageGroupIDLength + measurementLength));
   }
 
-  public int getMeasurementID(long id) {
-    return (int)((id << storageGroupIDLength + deviceIDLength) >>> (storageGroupIDLength + deviceIDLength));
+  public static int getMeasurementID(long fullId) {
+    return (int)((fullId << storageGroupIDLength + deviceIDLength) >>> (storageGroupIDLength + deviceIDLength));
   }
 
 
