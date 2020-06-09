@@ -19,10 +19,13 @@
 package org.apache.iotdb.db.metadata;
 
 public class MetadataConstant {
-  private MetadataConstant(){
-    //allowed to do nothing
+
+  private MetadataConstant() {
+    // allowed to do nothing
   }
+
   public static final String ROOT = "root";
   public static final String METADATA_LOG = "mlog.txt";
   public static final String TAG_LOG = "tlog.txt";
+  public static final String MTREE_SNAPSHOT = "mtree.snapshot";
 }

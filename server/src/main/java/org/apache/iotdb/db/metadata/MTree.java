@@ -24,6 +24,12 @@ import static org.apache.iotdb.db.conf.IoTDBConstant.PATH_WILDCARD;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.serializer.SerializerFeature;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -40,6 +46,7 @@ import java.util.TreeSet;
 import java.util.regex.Pattern;
 import org.apache.iotdb.db.conf.IoTDBConstant;
 import org.apache.iotdb.db.conf.IoTDBDescriptor;
+import org.apache.iotdb.db.engine.fileSystem.SystemFileFactory;
 import org.apache.iotdb.db.exception.metadata.AliasAlreadyExistException;
 import org.apache.iotdb.db.exception.metadata.IllegalPathException;
 import org.apache.iotdb.db.exception.metadata.MetadataException;
@@ -59,6 +66,8 @@ import org.apache.iotdb.tsfile.file.metadata.enums.TSEncoding;
 import org.apache.iotdb.tsfile.read.common.Path;
 import org.apache.iotdb.tsfile.utils.Pair;
 import org.apache.iotdb.tsfile.write.schema.MeasurementSchema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The hierarchical struct of the Metadata Tree is implemented in this class.
@@ -66,12 +75,15 @@ import org.apache.iotdb.tsfile.write.schema.MeasurementSchema;
 public class MTree implements Serializable {
 
   private static final long serialVersionUID = -4200394435237291964L;
-  private MNode root;
+  private static final Logger logger = LoggerFactory.getLogger(MTree.class);
 
-  private transient ThreadLocal<Integer> limit = new ThreadLocal<>();
-  private transient ThreadLocal<Integer> offset = new ThreadLocal<>();
-  private transient ThreadLocal<Integer> count = new ThreadLocal<>();
-  private transient ThreadLocal<Integer> curOffset = new ThreadLocal<>();
+  private MNode root;
+  private int snapshotlineNumber;
+
+  private transient static ThreadLocal<Integer> limit = new ThreadLocal<>();
+  private transient static ThreadLocal<Integer> offset = new ThreadLocal<>();
+  private transient static ThreadLocal<Integer> count = new ThreadLocal<>();
+  private transient static ThreadLocal<Integer> curOffset = new ThreadLocal<>();
 
   MTree() {
     this.root = new InternalMNode(null, IoTDBConstant.PATH_ROOT);
@@ -368,13 +380,6 @@ public class MTree implements Serializable {
   }
 
   /**
-   * Get device node, if the give path is not a device, throw exception
-   */
-  MNode getDeviceNode(String path) throws MetadataException {
-    return getNodeByPath(path);
-  }
-
-  /**
    * Get node by the path
    *
    * @return last node in given seriesPath
@@ -612,6 +617,7 @@ public class MTree implements Serializable {
 
   /**
    * Traverse the MTree to get the count of timeseries in the given level.
+   *
    * @param targetLevel Record the distance to the target level, 0 means the target level.
    */
   private int getCountInGivenLevel(MNode node, int targetLevel) {
@@ -847,6 +853,7 @@ public class MTree implements Serializable {
 
   /**
    * Get all paths under the given level.
+   *
    * @param targetLevel Record the distance to the target level, 0 means the target level.
    */
   private void findNodes(MNode node, String path, List<String> res, int targetLevel) {
@@ -862,6 +869,42 @@ public class MTree implements Serializable {
         findNodes(child, path + PATH_SEPARATOR + child.toString(), res, targetLevel - 1);
       }
     }
+  }
+
+  public int getSnapshotlineNumber() {
+    return snapshotlineNumber;
+  }
+
+  public void setSnapshotlineNumber(int snapshotlineNumber) {
+    this.snapshotlineNumber = snapshotlineNumber;
+  }
+
+  public void serializeTo(String snapshotPath, int lineNumber) throws IOException {
+    this.setSnapshotlineNumber(lineNumber);
+    ObjectOutputStream os = new ObjectOutputStream(
+        new FileOutputStream(SystemFileFactory.INSTANCE.getFile(snapshotPath)));
+    os.writeObject(this);
+    os.close();
+  }
+
+  public static MTree deserializeFrom(String mtreeSnapshotPath) throws IOException {
+    File mtreeSnapshot = SystemFileFactory.INSTANCE.getFile(mtreeSnapshotPath);
+    if (!mtreeSnapshot.exists()) {
+      return new MTree();
+    }
+    ObjectInputStream oi = new ObjectInputStream(new FileInputStream(mtreeSnapshot));
+    MTree mtree = null;
+    try {
+      mtree = (MTree) oi.readObject();
+    } catch (ClassNotFoundException e) {
+      logger.error("Failed to deserialize MTree from mtree.snapshot. ", e);
+    }
+    oi.close();
+    limit = new ThreadLocal<>();
+    offset = new ThreadLocal<>();
+    count = new ThreadLocal<>();
+    curOffset = new ThreadLocal<>();
+    return mtree;
   }
 
   @Override
