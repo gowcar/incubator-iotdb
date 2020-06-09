@@ -18,6 +18,9 @@
  */
 package org.apache.iotdb.db.metadata;
 
+import static org.apache.iotdb.db.conf.IoTDBConstant.PATH_SEPARATOR;
+import static org.apache.iotdb.db.conf.IoTDBConstant.PATH_WILDCARD;
+
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.serializer.SerializerFeature;
@@ -52,8 +55,8 @@ import org.apache.iotdb.db.exception.metadata.PathNotExistException;
 import org.apache.iotdb.db.exception.metadata.StorageGroupAlreadySetException;
 import org.apache.iotdb.db.exception.metadata.StorageGroupNotSetException;
 import org.apache.iotdb.db.metadata.mnode.InternalMNode;
-import org.apache.iotdb.db.metadata.mnode.MeasurementMNode;
 import org.apache.iotdb.db.metadata.mnode.MNode;
+import org.apache.iotdb.db.metadata.mnode.MeasurementMNode;
 import org.apache.iotdb.db.metadata.mnode.StorageGroupMNode;
 import org.apache.iotdb.db.qp.physical.sys.ShowTimeSeriesPlan;
 import org.apache.iotdb.tsfile.common.constant.TsFileConstant;
@@ -65,24 +68,6 @@ import org.apache.iotdb.tsfile.utils.Pair;
 import org.apache.iotdb.tsfile.write.schema.MeasurementSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.Serializable;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Queue;
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.regex.Pattern;
-
-import static org.apache.iotdb.db.conf.IoTDBConstant.PATH_SEPARATOR;
-import static org.apache.iotdb.db.conf.IoTDBConstant.PATH_WILDCARD;
 
 /**
  * The hierarchical struct of the Metadata Tree is implemented in this class.
@@ -150,7 +135,8 @@ public class MTree implements Serializable {
     if (alias != null && cur.hasChild(alias)) {
       throw new AliasAlreadyExistException(path, alias);
     }
-    MeasurementMNode leaf = new MeasurementMNode(cur, leafName, alias, dataType, encoding, compressor, props);
+    MeasurementMNode leaf = new MeasurementMNode(cur, leafName, alias, dataType, encoding,
+        compressor, props);
     cur.addChild(leafName, leaf);
     // link alias to LeafMNode
     if (alias != null) {
@@ -620,7 +606,7 @@ public class MTree implements Serializable {
         if (child instanceof MeasurementMNode) {
           cnt++;
         }
-          cnt += getCount(child, nodes, idx + 1);
+        cnt += getCount(child, nodes, idx + 1);
       }
       return cnt;
     }
@@ -692,23 +678,23 @@ public class MTree implements Serializable {
       if (node.getName().contains(TsFileConstant.PATH_SEPARATOR)) {
         nodeName = "\"" + node + "\"";
       } else {
-          nodeName = node.getName();
-        }
-        String nodePath = parent + nodeName;
-        String[] tsRow = new String[7];
-        tsRow[0] = nodePath;
-        tsRow[1] = ((MeasurementMNode) node).getAlias();
-        MeasurementSchema measurementSchema = ((MeasurementMNode) node).getSchema();
-        tsRow[2] = getStorageGroupName(nodePath);
-        tsRow[3] = measurementSchema.getType().toString();
-        tsRow[4] = measurementSchema.getEncodingType().toString();
-        tsRow[5] = measurementSchema.getCompressor().toString();
-        tsRow[6] = String.valueOf(((MeasurementMNode) node).getOffset());
-        timeseriesSchemaList.add(tsRow);
+        nodeName = node.getName();
+      }
+      String nodePath = parent + nodeName;
+      String[] tsRow = new String[7];
+      tsRow[0] = nodePath;
+      tsRow[1] = ((MeasurementMNode) node).getAlias();
+      MeasurementSchema measurementSchema = ((MeasurementMNode) node).getSchema();
+      tsRow[2] = getStorageGroupName(nodePath);
+      tsRow[3] = measurementSchema.getType().toString();
+      tsRow[4] = measurementSchema.getEncodingType().toString();
+      tsRow[5] = measurementSchema.getCompressor().toString();
+      tsRow[6] = String.valueOf(((MeasurementMNode) node).getOffset());
+      timeseriesSchemaList.add(tsRow);
 
-        if (hasLimit) {
-          count.set(count.get() + 1);
-        }
+      if (hasLimit) {
+        count.set(count.get() + 1);
+      }
     }
     String nodeReg = MetaUtils.getNodeRegByIdx(idx, nodes);
     if (!nodeReg.contains(PATH_WILDCARD)) {
