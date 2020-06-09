@@ -53,7 +53,7 @@ import org.apache.iotdb.db.exception.metadata.PathNotExistException;
 import org.apache.iotdb.db.exception.metadata.StorageGroupAlreadySetException;
 import org.apache.iotdb.db.exception.metadata.StorageGroupNotSetException;
 import org.apache.iotdb.db.metadata.mnode.InternalMNode;
-import org.apache.iotdb.db.metadata.mnode.LeafMNode;
+import org.apache.iotdb.db.metadata.mnode.MeasurementMNode;
 import org.apache.iotdb.db.metadata.mnode.MNode;
 import org.apache.iotdb.db.metadata.mnode.StorageGroupMNode;
 import org.apache.iotdb.db.monitor.MonitorConstants;
@@ -100,7 +100,7 @@ public class MManager {
   private LRUCache<String, MeasurementSchema> mRemoteSchemaCache;
 
   // tag key -> tag value -> LeafMNode
-  private Map<String, Map<String, Set<LeafMNode>>> tagIndex = new HashMap<>();
+  private Map<String, Map<String, Set<MeasurementMNode>>> tagIndex = new HashMap<>();
 
   // storage group name -> the series number
   private Map<String, Integer> seriesNumberInStorageGroups = new HashMap<>();
@@ -338,7 +338,7 @@ public class MManager {
       IoTDBConfigDynamicAdapter.getInstance().addOrDeleteTimeSeries(1);
 
       // create time series in MTree
-      LeafMNode leafMNode = mtree
+      MeasurementMNode leafMNode = mtree
           .createTimeseries(path, plan.getDataType(), plan.getEncoding(), plan.getCompressor(),
               plan.getProps(), plan.getAlias());
 
@@ -457,7 +457,7 @@ public class MManager {
   /**
    * remove the node from the tag inverted index
    */
-  private void removeFromTagInvertedIndex(LeafMNode node) throws IOException {
+  private void removeFromTagInvertedIndex(MeasurementMNode node) throws IOException {
     if (node.getOffset() < 0) {
       return;
     }
@@ -494,7 +494,7 @@ public class MManager {
       throws MetadataException, IOException {
     lock.writeLock().lock();
     try {
-      Pair<String, LeafMNode> pair = mtree.deleteTimeseriesAndReturnEmptyStorageGroup(path);
+      Pair<String, MeasurementMNode> pair = mtree.deleteTimeseriesAndReturnEmptyStorageGroup(path);
       removeFromTagInvertedIndex(pair.right);
       String storageGroupName = pair.left;
 
@@ -565,8 +565,8 @@ public class MManager {
         mRemoteSchemaCache.removeItem(storageGroup);
 
         // try to delete storage group
-        List<LeafMNode> leafMNodes = mtree.deleteStorageGroup(storageGroup);
-        for (LeafMNode leafMNode : leafMNodes) {
+        List<MeasurementMNode> leafMNodes = mtree.deleteStorageGroup(storageGroup);
+        for (MeasurementMNode leafMNode : leafMNodes) {
           removeFromTagInvertedIndex(leafMNode);
         }
         mNodeCache.clear();
@@ -651,7 +651,7 @@ public class MManager {
         if (!deviceNode.hasChild(measurements[i])) {
           throw new MetadataException(measurements[i] + " does not exist in " + deviceId);
         }
-        measurementSchemas[i] = ((LeafMNode) deviceNode.getChild(measurements[i])).getSchema();
+        measurementSchemas[i] = ((MeasurementMNode) deviceNode.getChild(measurements[i])).getSchema();
       }
       return measurementSchemas;
     } finally {
@@ -796,20 +796,20 @@ public class MManager {
       if (!tagIndex.containsKey(plan.getKey())) {
         throw new MetadataException("The key " + plan.getKey() + " is not a tag.");
       }
-      Map<String, Set<LeafMNode>> value2Node = tagIndex.get(plan.getKey());
+      Map<String, Set<MeasurementMNode>> value2Node = tagIndex.get(plan.getKey());
       if (value2Node.isEmpty()) {
         throw new MetadataException("The key " + plan.getKey() + " is not a tag.");
       }
-      Set<LeafMNode> allMatchedNodes = new TreeSet<>(Comparator.comparing(MNode::getFullPath));
+      Set<MeasurementMNode> allMatchedNodes = new TreeSet<>(Comparator.comparing(MNode::getFullPath));
       if (plan.isContains()) {
-        for (Entry<String, Set<LeafMNode>> entry : value2Node.entrySet()) {
+        for (Entry<String, Set<MeasurementMNode>> entry : value2Node.entrySet()) {
           String tagValue = entry.getKey();
           if (tagValue.contains(plan.getValue())) {
             allMatchedNodes.addAll(entry.getValue());
           }
         }
       } else {
-        for (Entry<String, Set<LeafMNode>> entry : value2Node.entrySet()) {
+        for (Entry<String, Set<MeasurementMNode>> entry : value2Node.entrySet()) {
           String tagValue = entry.getKey();
           if (plan.getValue().equals(tagValue)) {
             allMatchedNodes.addAll(entry.getValue());
@@ -822,7 +822,7 @@ public class MManager {
       int count = 0;
       int limit = plan.getLimit();
       int offset = plan.getOffset();
-      for (LeafMNode leaf : allMatchedNodes) {
+      for (MeasurementMNode leaf : allMatchedNodes) {
         if (match(leaf.getFullPath(), prefixNodes)) {
           if (limit != 0 || offset != 0) {
             curOffset++;
@@ -914,7 +914,7 @@ public class MManager {
       InternalMNode node = (InternalMNode) mtree.getNodeByPath(device);
       MNode leaf = node.getChild(measurement);
       if (leaf != null) {
-        return ((LeafMNode) leaf).getSchema();
+        return ((MeasurementMNode) leaf).getSchema();
       } else {
         return mRemoteSchemaCache
             .get(device + IoTDBConstant.PATH_SEPARATOR + measurement);
@@ -1135,7 +1135,7 @@ public class MManager {
   public void changeOffset(String path, long offset) throws MetadataException {
     lock.writeLock().lock();
     try {
-      ((LeafMNode) mtree.getNodeByPath(path)).setOffset(offset);
+      ((MeasurementMNode) mtree.getNodeByPath(path)).setOffset(offset);
     } finally {
       lock.writeLock().unlock();
     }
@@ -1144,7 +1144,7 @@ public class MManager {
   public void changeAlias(String path, String alias) throws MetadataException {
     lock.writeLock().lock();
     try {
-      LeafMNode leafMNode = (LeafMNode) mtree.getNodeByPath(path);
+      MeasurementMNode leafMNode = (MeasurementMNode) mtree.getNodeByPath(path);
       if (leafMNode.getAlias() != null) {
         leafMNode.getParent().deleteAliasChild(leafMNode.getAlias());
       }
@@ -1169,10 +1169,10 @@ public class MManager {
     lock.writeLock().lock();
     try {
       MNode mNode = mtree.getNodeByPath(fullPath);
-      if (!(mNode instanceof LeafMNode)) {
+      if (!(mNode instanceof MeasurementMNode)) {
         throw new PathNotExistException(fullPath);
       }
-      LeafMNode leafMNode = (LeafMNode) mNode;
+      MeasurementMNode leafMNode = (MeasurementMNode) mNode;
       // upsert alias
       if (alias != null && !alias.equals(leafMNode.getAlias())) {
 
@@ -1262,10 +1262,10 @@ public class MManager {
     lock.writeLock().lock();
     try {
       MNode mNode = mtree.getNodeByPath(fullPath);
-      if (!(mNode instanceof LeafMNode)) {
+      if (!(mNode instanceof MeasurementMNode)) {
         throw new PathNotExistException(fullPath);
       }
-      LeafMNode leafMNode = (LeafMNode) mNode;
+      MeasurementMNode leafMNode = (MeasurementMNode) mNode;
       // no tag or attribute, we need to add a new record in log
       if (leafMNode.getOffset() < 0) {
         long offset = tagLogFile.write(Collections.emptyMap(), attributesMap);
@@ -1308,10 +1308,10 @@ public class MManager {
     lock.writeLock().lock();
     try {
       MNode mNode = mtree.getNodeByPath(fullPath);
-      if (!(mNode instanceof LeafMNode)) {
+      if (!(mNode instanceof MeasurementMNode)) {
         throw new PathNotExistException(fullPath);
       }
-      LeafMNode leafMNode = (LeafMNode) mNode;
+      MeasurementMNode leafMNode = (MeasurementMNode) mNode;
       // no tag or attribute, we need to add a new record in log
       if (leafMNode.getOffset() < 0) {
         long offset = tagLogFile.write(tagsMap, Collections.emptyMap());
@@ -1364,10 +1364,10 @@ public class MManager {
     lock.writeLock().lock();
     try {
       MNode mNode = mtree.getNodeByPath(fullPath);
-      if (!(mNode instanceof LeafMNode)) {
+      if (!(mNode instanceof MeasurementMNode)) {
         throw new PathNotExistException(fullPath);
       }
-      LeafMNode leafMNode = (LeafMNode) mNode;
+      MeasurementMNode leafMNode = (MeasurementMNode) mNode;
       // no tag or attribute, just do nothing.
       if (leafMNode.getOffset() < 0) {
         return;
@@ -1417,10 +1417,10 @@ public class MManager {
     lock.writeLock().lock();
     try {
       MNode mNode = mtree.getNodeByPath(fullPath);
-      if (!(mNode instanceof LeafMNode)) {
+      if (!(mNode instanceof MeasurementMNode)) {
         throw new PathNotExistException(fullPath);
       }
-      LeafMNode leafMNode = (LeafMNode) mNode;
+      MeasurementMNode leafMNode = (MeasurementMNode) mNode;
       if (leafMNode.getOffset() < 0) {
         throw new MetadataException(
             String.format("TimeSeries [%s] does not have any tag/attribute.", fullPath));
@@ -1478,10 +1478,10 @@ public class MManager {
     lock.writeLock().lock();
     try {
       MNode mNode = mtree.getNodeByPath(fullPath);
-      if (!(mNode instanceof LeafMNode)) {
+      if (!(mNode instanceof MeasurementMNode)) {
         throw new PathNotExistException(fullPath);
       }
-      LeafMNode leafMNode = (LeafMNode) mNode;
+      MeasurementMNode leafMNode = (MeasurementMNode) mNode;
       if (leafMNode.getOffset() < 0) {
         throw new MetadataException(
             String.format("TimeSeries [%s] does not have [%s] tag/attribute.", fullPath, oldKey));
@@ -1555,8 +1555,8 @@ public class MManager {
     nodeDeque.addLast(startingNode);
     while (!nodeDeque.isEmpty()) {
       MNode node = nodeDeque.removeFirst();
-      if (node instanceof LeafMNode) {
-        MeasurementSchema nodeSchema = ((LeafMNode) node).getSchema();
+      if (node instanceof MeasurementMNode) {
+        MeasurementSchema nodeSchema = ((MeasurementMNode) node).getSchema();
         timeseriesSchemas.add(new MeasurementSchema(node.getFullPath(), nodeSchema.getType(),
             nodeSchema.getEncodingType(), nodeSchema.getCompressor()));
       } else if (!node.getChildren().isEmpty()) {
