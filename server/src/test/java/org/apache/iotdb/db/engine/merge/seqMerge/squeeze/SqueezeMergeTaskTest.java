@@ -49,10 +49,13 @@ import org.junit.Test;
 public class SqueezeMergeTaskTest extends MergeTest {
 
   private File tempSGDir;
+  private MergeSizeSelectorStrategy preMergeSizeSelectorStrategy;
 
   @Before
   public void setUp() throws IOException, WriteProcessException, MetadataException {
     super.setUp();
+    preMergeSizeSelectorStrategy = IoTDBDescriptor.getInstance().getConfig()
+        .getMergeSizeSelectorStrategy();
     IoTDBDescriptor.getInstance().getConfig().setMergeSizeSelectorStrategy(
         MergeSizeSelectorStrategy.TIME_RANGE);
     tempSGDir = new File(TestConstant.BASE_OUTPUT_PATH.concat("tempSG"));
@@ -62,6 +65,8 @@ public class SqueezeMergeTaskTest extends MergeTest {
   @After
   public void tearDown() throws IOException, StorageEngineException {
     super.tearDown();
+    IoTDBDescriptor.getInstance().getConfig().setMergeSizeSelectorStrategy(
+        preMergeSizeSelectorStrategy);
     FileUtils.deleteDirectory(tempSGDir);
   }
 

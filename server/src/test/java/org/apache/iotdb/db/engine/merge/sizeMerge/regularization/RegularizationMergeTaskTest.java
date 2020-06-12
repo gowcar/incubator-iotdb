@@ -48,11 +48,14 @@ import org.junit.Test;
 public class RegularizationMergeTaskTest extends MergeTest {
 
   private File tempSGDir;
+  private int preChunkMergePointThreshold;
 
   @Before
   public void setUp()
-      throws IOException, WriteProcessException, MetadataException, MetadataException {
+      throws IOException, WriteProcessException, MetadataException {
     super.setUp();
+    preChunkMergePointThreshold = IoTDBDescriptor.getInstance().getConfig()
+        .getChunkMergePointThreshold();
     IoTDBDescriptor.getInstance().getConfig().setChunkMergePointThreshold(100);
     tempSGDir = new File(TestConstant.BASE_OUTPUT_PATH.concat("tempSG"));
     tempSGDir.mkdirs();
@@ -61,6 +64,8 @@ public class RegularizationMergeTaskTest extends MergeTest {
   @After
   public void tearDown() throws IOException, StorageEngineException {
     super.tearDown();
+    IoTDBDescriptor.getInstance().getConfig()
+        .setChunkMergePointThreshold(preChunkMergePointThreshold);
     FileUtils.deleteDirectory(tempSGDir);
   }
 
