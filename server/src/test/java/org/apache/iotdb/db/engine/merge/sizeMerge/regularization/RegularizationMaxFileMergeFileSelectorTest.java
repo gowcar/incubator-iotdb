@@ -39,7 +39,7 @@ import org.apache.iotdb.tsfile.utils.Pair;
 import org.junit.Before;
 import org.junit.Test;
 
-public class MaxFileMergeFileSelectorTest extends MergeTest {
+public class RegularizationMaxFileMergeFileSelectorTest extends MergeTest {
 
   @Before
   public void setUp()

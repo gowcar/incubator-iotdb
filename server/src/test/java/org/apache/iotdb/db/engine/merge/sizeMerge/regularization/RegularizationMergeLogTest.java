@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.iotdb.db.engine.merge.seqMerge.squeeze;
+package org.apache.iotdb.db.engine.merge.sizeMerge.regularization;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
@@ -31,7 +31,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.iotdb.db.constant.TestConstant;
 import org.apache.iotdb.db.engine.merge.MergeTest;
 import org.apache.iotdb.db.engine.merge.manage.MergeResource;
-import org.apache.iotdb.db.engine.merge.seqMerge.squeeze.task.SqueezeMergeTask;
+import org.apache.iotdb.db.engine.merge.sizeMerge.regularization.task.RegularizationMergeTask;
 import org.apache.iotdb.db.engine.storagegroup.TsFileResource;
 import org.apache.iotdb.db.exception.StorageEngineException;
 import org.apache.iotdb.db.exception.metadata.MetadataException;
@@ -40,7 +40,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-public class MergeLogTest extends MergeTest {
+public class RegularizationMergeLogTest extends MergeTest {
 
   private File tempSGDir;
 
@@ -59,9 +59,9 @@ public class MergeLogTest extends MergeTest {
 
   @Test
   public void testMergeLog() throws Exception {
-    SqueezeMergeTask mergeTask =
-        new SqueezeMergeTask(
-            new MergeResource(seqResources.subList(0, 1), unseqResources.subList(0, 1)),
+    RegularizationMergeTask mergeTask =
+        new RegularizationMergeTask(
+            new MergeResource(seqResources),
             tempSGDir.getPath(), this::testCallBack, "test", MERGE_TEST_SG);
     mergeTask.call();
   }
@@ -79,7 +79,7 @@ public class MergeLogTest extends MergeTest {
       e.printStackTrace();
       fail(e.getMessage());
     }
-    assertEquals(6, lineCnt);
+    assertEquals(3, lineCnt);
     try {
       for (TsFileResource fileResource : newFile) {
         fileResource.close();

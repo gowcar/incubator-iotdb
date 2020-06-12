@@ -196,7 +196,6 @@ public abstract class MergeTest {
           fileWriter.flushAllChunkGroups();
         }
       }
-      fileWriter.writeVersion(tsFileResource.getHistoricalVersions().iterator().next());
       fileWriter.close();
     } catch (Exception e){
       logger.error("meet error when prepare data files: {}, reason:{}", e.getMessage(), e);
