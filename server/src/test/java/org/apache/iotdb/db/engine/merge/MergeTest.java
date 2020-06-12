@@ -171,6 +171,7 @@ public abstract class MergeTest {
       long valueOffset)
       throws IOException, WriteProcessException {
     try {
+      logger.info("the file {} exists {}", tsFileResource.getFile(), tsFileResource.getFile().exists());
       TsFileWriter fileWriter = new TsFileWriter(tsFileResource.getFile());
 
       for (String deviceId : deviceIds) {
