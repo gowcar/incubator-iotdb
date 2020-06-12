@@ -84,6 +84,7 @@ public class MetadataManagerHelper {
           TSEncoding.PLAIN, compressionType, Collections.emptyMap());
 
     } catch (Exception e) {
+      System.err.println(e);
       throw new RuntimeException("Initialize the metadata manager failed", e);
     }
   }

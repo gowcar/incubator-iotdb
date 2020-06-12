@@ -167,29 +167,34 @@ public abstract class MergeTest {
   void prepareFile(TsFileResource tsFileResource, long timeOffset, long ptNum,
       long valueOffset)
       throws IOException, WriteProcessException {
-    TsFileWriter fileWriter = new TsFileWriter(tsFileResource.getFile());
-    for (String deviceId : deviceIds) {
-      for (MeasurementSchema measurementSchema : measurementSchemas) {
-        fileWriter.registerTimeseries(
-            new Path(deviceId, measurementSchema.getMeasurementId()), measurementSchema);
-      }
-    }
-    for (long i = timeOffset; i < timeOffset + ptNum; i++) {
-      for (int j = 0; j < deviceNum; j++) {
-        TSRecord record = new TSRecord(i, deviceIds[j]);
-        for (int k = 0; k < measurementNum; k++) {
-          record.addTuple(DataPoint.getDataPoint(measurementSchemas[k].getType(),
-              measurementSchemas[k].getMeasurementId(), String.valueOf(i + valueOffset)));
+    try {
+      TsFileWriter fileWriter = new TsFileWriter(tsFileResource.getFile());
+
+      for (String deviceId : deviceIds) {
+        for (MeasurementSchema measurementSchema : measurementSchemas) {
+          fileWriter.registerTimeseries(
+              new Path(deviceId, measurementSchema.getMeasurementId()), measurementSchema);
         }
-        fileWriter.write(record);
-        tsFileResource.updateStartTime(deviceIds[j], i);
-        tsFileResource.updateEndTime(deviceIds[j], i);
       }
-      if ((i + 1) % flushInterval == 0) {
-        fileWriter.flushAllChunkGroups();
+      for (long i = timeOffset; i < timeOffset + ptNum; i++) {
+        for (int j = 0; j < deviceNum; j++) {
+          TSRecord record = new TSRecord(i, deviceIds[j]);
+          for (int k = 0; k < measurementNum; k++) {
+            record.addTuple(DataPoint.getDataPoint(measurementSchemas[k].getType(),
+                measurementSchemas[k].getMeasurementId(), String.valueOf(i + valueOffset)));
+          }
+          fileWriter.write(record);
+          tsFileResource.updateStartTime(deviceIds[j], i);
+          tsFileResource.updateEndTime(deviceIds[j], i);
+        }
+        if ((i + 1) % flushInterval == 0) {
+          fileWriter.flushAllChunkGroups();
+        }
       }
+      fileWriter.writeVersion(tsFileResource.getHistoricalVersions().iterator().next());
+      fileWriter.close();
+    } catch (Exception e){
+      System.err.println(e);
     }
-    fileWriter.writeVersion(tsFileResource.getHistoricalVersions().iterator().next());
-    fileWriter.close();
   }
 }
