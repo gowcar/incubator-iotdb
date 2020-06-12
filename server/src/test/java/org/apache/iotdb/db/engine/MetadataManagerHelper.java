@@ -18,6 +18,7 @@
  */
 package org.apache.iotdb.db.engine;
 
+import org.apache.iotdb.db.engine.merge.MergeTest;
 import org.apache.iotdb.db.metadata.MManager;
 import org.apache.iotdb.tsfile.common.conf.TSFileDescriptor;
 import org.apache.iotdb.tsfile.file.metadata.enums.CompressionType;
@@ -25,8 +26,12 @@ import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
 import org.apache.iotdb.tsfile.file.metadata.enums.TSEncoding;
 
 import java.util.Collections;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MetadataManagerHelper {
+
+  private static final Logger logger = LoggerFactory.getLogger(MetadataManagerHelper.class);
 
   public static void initMetadata() {
     MManager mmanager = MManager.getInstance();
@@ -84,7 +89,7 @@ public class MetadataManagerHelper {
           TSEncoding.PLAIN, compressionType, Collections.emptyMap());
 
     } catch (Exception e) {
-      System.err.println(e);
+      logger.error("Initialize the metadata manager failed:{}, reason:{}",e.getMessage(),e);
       throw new RuntimeException("Initialize the metadata manager failed", e);
     }
   }

@@ -38,6 +38,7 @@ import org.apache.iotdb.db.exception.StorageEngineException;
 import org.apache.iotdb.db.metadata.MManager;
 import org.apache.iotdb.db.query.control.FileReaderManager;
 import org.apache.iotdb.db.utils.EnvironmentUtils;
+import org.apache.iotdb.tsfile.encoding.encoder.DeltaBinaryEncoder;
 import org.apache.iotdb.tsfile.exception.write.WriteProcessException;
 import org.apache.iotdb.tsfile.file.metadata.enums.CompressionType;
 import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
@@ -49,8 +50,12 @@ import org.apache.iotdb.tsfile.write.record.datapoint.DataPoint;
 import org.apache.iotdb.tsfile.write.schema.MeasurementSchema;
 import org.junit.After;
 import org.junit.Before;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class MergeTest {
+
+  private static final Logger logger = LoggerFactory.getLogger(MergeTest.class);
 
   protected static final String MERGE_TEST_SG = "root.mergeTest";
 
@@ -194,7 +199,7 @@ public abstract class MergeTest {
       fileWriter.writeVersion(tsFileResource.getHistoricalVersions().iterator().next());
       fileWriter.close();
     } catch (Exception e){
-      System.err.println(e);
+      logger.error("meet error when prepare data files: {}, reason:{}", e.getMessage(), e);
     }
   }
 }
